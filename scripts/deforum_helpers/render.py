@@ -10,7 +10,7 @@ from PIL import Image
 import pathlib
 import torchvision.transforms as T
 
-from .generate import generate, add_noise
+from .generate import generate, add_noise, prepare_mask
 from .prompt import sanitize
 from .animation import DeformAnimKeys, sample_from_cv2, sample_to_cv2, anim_frame_warp_2d, anim_frame_warp_3d, vid2frames
 from .depth import DepthModel
@@ -81,10 +81,35 @@ def render_animation(args, anim_args, animation_prompts, root):
     turbo_steps = 1 if using_vid_init else int(anim_args.diffusion_cadence)
     turbo_prev_image, turbo_prev_frame_idx = None, 0
     turbo_next_image, turbo_next_frame_idx = None, 0
+    
+    # frame noising mask 
+    #TODO: move this after resume animation and load video mask at current resume frame
+    frame_noise_mask = None
+    if args.mask_frame_noise :
+        #HACK adding frame 0 noise masking by loading the mask here only when frame is 0
+        #video mask
+        if anim_args.use_mask_video:
+            mask_frame = os.path.join(args.outdir, 'maskframes', f"{1:05}.jpg")
+            args.mask_file = mask_frame
+            frame_noise_mask = prepare_mask(args.mask_file, 
+                                (args.W, args.H), 
+                                args.mask_contrast_adjust, 
+                                args.mask_brightness_adjust, 
+                                args.invert_mask)
+        
+        #static mask, since use_mask is set to true using video as mask, check that we are not using video mask and use static mask 
+        if not anim_args.use_mask_video and args.use_mask:
+            frame_noise_mask = prepare_mask(args.mask_file, 
+                                (args.W, args.H), 
+                                args.mask_contrast_adjust, 
+                                args.mask_brightness_adjust, 
+                                args.invert_mask)
+        print(frame_noise_mask.size, " frame_noise_mask.size on initial frame")
 
     # resume animation
     prev_sample = None
     color_match_sample = None
+    
     if anim_args.resume_from_timestring:
         last_frame = start_frame-1
         if turbo_steps > 1:
@@ -177,8 +202,7 @@ def render_animation(args, anim_args, animation_prompts, root):
             # apply scaling
             contrast_sample = prev_img * contrast
             # apply frame noising
-            #MASKARGSEXPANSION : Left comment as to where to enter for noise addition masking 
-            noised_sample = add_noise(sample_from_cv2(contrast_sample), noise)
+            noised_sample = add_noise(sample_from_cv2(contrast_sample), noise, frame_noise_mask)
 
             # use transformed previous frame as init for current
             args.use_init = True
@@ -214,7 +238,11 @@ def render_animation(args, anim_args, animation_prompts, root):
                 args.mask_file = mask_frame
 
         # sample the diffusion model
-        sample, image = generate(args, root, frame_idx, return_sample=True)
+        if args.mask_frame_noise and frame_idx > 0 and (args.use_mask or anim_args.use_mask_video): #noise mask is not supplied by generate(...) on frame 0
+            sample, image, frame_noise_mask = generate(args, root, frame_idx, return_sample=True)
+        else :
+            sample, image = generate(args, root, frame_idx, return_sample=True)
+            
         if not using_vid_init:
             prev_sample = sample
 
