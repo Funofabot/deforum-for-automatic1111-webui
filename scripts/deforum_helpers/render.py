@@ -104,7 +104,6 @@ def render_animation(args, anim_args, animation_prompts, root):
                                 args.mask_contrast_adjust, 
                                 args.mask_brightness_adjust, 
                                 args.invert_mask)
-        print(frame_noise_mask.size, " frame_noise_mask.size on initial frame")
 
     # resume animation
     prev_sample = None
