@@ -3,6 +3,7 @@ import PIL #HOTFIXISSUE#33 needed for instruction to generate negative mask.
 from PIL import Image, ImageOps
 import requests
 import numpy as np
+from math import ceil
 import torchvision.transforms.functional as TF
 from pytorch_lightning import seed_everything
 import os
@@ -12,7 +13,7 @@ from k_diffusion.external import CompVisDenoiser
 from torch import autocast
 from contextlib import nullcontext
 from einops import rearrange
-
+import modules.images as images
 from .prompt import get_uc_and_c, parse_weight
 from .k_samplers import sampler_fn
 from scipy.ndimage import gaussian_filter
@@ -22,14 +23,19 @@ from .callback import SamplerCallback
 #Webui
 import cv2
 from .animation import sample_from_cv2, sample_to_cv2
-from modules import processing
+from modules import processing, masking
 from modules.shared import opts, sd_model
 from modules.processing import process_images, StableDiffusionProcessingTxt2Img
 
-#MASKARGSEXPANSION 
-#Add option to remove noise in relation to masking so that areas which are masked receive less noise
-def add_noise(sample: torch.Tensor, noise_amt: float) -> torch.Tensor:
-    return sample + torch.randn(sample.shape, device=sample.device) * noise_amt
+def add_noise(sample: torch.Tensor, noise_amt: float, noise_mask) -> torch.Tensor:
+    # apply masked noise to frame
+    if noise_mask is not None:
+        noise_mask = np.array(noise_mask.convert("L"))
+        noise_mask = noise_mask.astype(np.float32) / 255.0
+        noise_mask = torch.from_numpy(noise_mask)
+        return sample + (torch.randn(sample.shape, device=sample.device) * noise_mask) * noise_amt    
+
+    return sample + (torch.randn(sample.shape, device=sample.device)) * noise_amt
 
 def load_img(path, shape, use_alpha_as_mask=False):
     # use_alpha_as_mask: Read the alpha channel of the image as the mask image
@@ -67,9 +73,8 @@ def load_mask_latent(mask_input, shape):
         mask_image = mask_input
     else:
         raise Exception("mask_input must be a PIL image or a file name")
-
-    mask_w_h = (shape[-1], shape[-2])
-    mask = mask_image.resize(mask_w_h, resample=Image.LANCZOS)
+    #mask_w_h = (shape[-1], shape[-2]) #shape is already provided as needed
+    mask = mask_image.resize(shape, resample=Image.LANCZOS)
     mask = mask.convert("L")
     return mask
 
@@ -149,6 +154,8 @@ def generate(args, root, frame = 0, return_sample=False):
         print("\nNo init image, but strength > 0. Strength has been auto set to 0, since use_init is False.")
         print("If you want to force strength > 0 with no init, please set strength_0_no_init to False.\n")
         args.strength = 0
+    
+    noise_mask_image = None
     mask_image = None
     init_image = None
     
@@ -202,7 +209,7 @@ def generate(args, root, frame = 0, return_sample=False):
                                 args.mask_brightness_adjust, 
                                 args.invert_mask)
                                 
-            p.inpainting_fill = args.fill # need to come up with better name. 
+            p.inpainting_fill = args.fill 
             p.inpaint_full_res= args.full_res_mask 
             p.inpaint_full_res_padding = args.full_res_mask_padding 
 
@@ -217,7 +224,11 @@ def generate(args, root, frame = 0, return_sample=False):
         
         p.init_images = [init_image]
         p.image_mask = mask
-
+        
+        # supply mask for frame
+        if args.mask_frame_noise :
+            noise_mask_image = mask
+            
         processed = processing.process_images(p)
     
     if root.initial_info == None:
@@ -237,5 +248,9 @@ def generate(args, root, frame = 0, return_sample=False):
         results = [image, processed.images[0]]
     else:
         results = [processed.images[0]]
+    
+    # added option to mask frame noising
+    if noise_mask_image is not None :
+        results.append(noise_mask_image)
     
     return results
