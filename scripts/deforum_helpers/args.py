@@ -430,7 +430,7 @@ def setup_deforum_setting_dictionary(self, is_img2img, is_extension = True):
         with gr.Row():
             video_init_path = gr.Textbox(label="video_init_path", lines=1, value = da.video_init_path, interactive=True)
         with gr.Row():
-            extract_nth_frame = gr.Number(label="extract_nth_frame", value=da.extract_nth_frame, interactive=True, precision=0)
+            extract_nth_frame = gr.Number( label="extract_nth_frame", value=da.extract_nth_frame, interactive=True, precision=0)
             overwrite_extracted_frames = gr.Checkbox(label="overwrite_extracted_frames", value=False, interactive=True)
             use_mask_video = gr.Checkbox(label="use_mask_video", value=False, interactive=True)
         with gr.Row():
@@ -563,8 +563,17 @@ def process_args(self, p, override_settings_with_file, custom_settings_file, ani
         p.fill = args.fill
         p.ddim_eta = args.ddim_eta
 
+    args.timestring = time.strftime('%Y%m%d%H%M%S') #moved to use in path
 
     args.outdir = os.path.join(p.outpath_samples, batch_name)
+    # use timestring as a new folder to help organize
+    # if resume from timestring use the resume timestring instead of current time string
+    if anim_args.resume_from_timestring :
+        args.timestring = anim_args.resume_timestring
+        args.outdir = os.path.join(args.outdir, anim_args.resume_timestring)
+    else :
+        args.outdir = os.path.join(args.outdir, args.timestring)
+
     root.outpath_samples = args.outdir
     args.outdir = os.path.join(os.getcwd(), args.outdir)
     if not os.path.exists(args.outdir):
@@ -572,7 +581,7 @@ def process_args(self, p, override_settings_with_file, custom_settings_file, ani
     
     args.seed = get_fixed_seed(args.seed)
         
-    args.timestring = time.strftime('%Y%m%d%H%M%S')
+    
     args.strength = max(0.0, min(1.0, args.strength))
 
     if not args.use_init:
