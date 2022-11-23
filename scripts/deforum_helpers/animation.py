@@ -43,8 +43,6 @@ def vid2frames(video_path, video_in_frame_path, n=1, overwrite=True):
     input_content = []
     if os.path.exists(video_in_frame_path) :
         input_content = os.listdir(video_in_frame_path)
-    else :
-        os.makedirs(video_in_frame_path, exist_ok=True)
 
     vidcap = cv2.VideoCapture(video_path)
     frame_count = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT)) # grab the frame count to check against existing directory len
