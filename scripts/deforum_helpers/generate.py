@@ -137,6 +137,7 @@ def generate(args, root, frame = 0, return_sample=False):
     # FIXME better color corrections as match histograms doesn't seem to be fully working
     if root.color_corrections is not None:
         p.color_corrections = root.color_corrections
+
     p.outpath_samples = root.outpath_samples
     p.outpath_grids = root.outpath_samples
     
@@ -237,11 +238,10 @@ def generate(args, root, frame = 0, return_sample=False):
     if root.initial_info == None:
         root.initial_seed = processed.seed
         root.initial_info = processed.info
-    
+        
     if root.first_frame == None:
-        root.first_frame = processed.images[0]
-        root.color_corrections = [processing.setup_color_correction(root.first_frame)]
-    
+            root.first_frame = processed.images[0]
+
     if return_sample:
         pil_image = processed.images[0].convert('RGB') 
         open_cv_image = np.array(pil_image) 
