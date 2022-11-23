@@ -23,7 +23,7 @@ from .callback import SamplerCallback
 #Webui
 import cv2
 from .animation import sample_from_cv2, sample_to_cv2
-from modules import processing, masking
+from modules import processing
 from modules.shared import opts, sd_model
 from modules.processing import process_images, StableDiffusionProcessingTxt2Img
 
@@ -62,8 +62,6 @@ def load_img(path, shape, use_alpha_as_mask=False):
 
 def load_mask_latent(mask_input, shape):
     # mask_input (str or PIL Image.Image): Path to the mask image or a PIL Image object
-    # shape (list-like len(4)): shape of the image to match, usually latent_image.shape
-    
     if isinstance(mask_input, str): # mask input is probably a file name
         if mask_input.startswith('http://') or mask_input.startswith('https://'):
             mask_image = Image.open(requests.get(mask_input, stream=True).raw).convert('RGBA')
@@ -73,30 +71,26 @@ def load_mask_latent(mask_input, shape):
         mask_image = mask_input
     else:
         raise Exception("mask_input must be a PIL image or a file name")
-    #mask_w_h = (shape[-1], shape[-2]) #shape is already provided as needed
+
     mask = mask_image.resize(shape, resample=Image.LANCZOS)
     mask = mask.convert("L")
     return mask
 
 def prepare_mask(mask_input, mask_shape, mask_brightness_adjust=1.0, mask_contrast_adjust=1.0, invert_mask=False):
     # mask_input (str or PIL Image.Image): Path to the mask image or a PIL Image object
-    # shape (list-like len(4)): shape of the image to match, usually latent_image.shape
     # mask_brightness_adjust (non-negative float): amount to adjust brightness of the iamge, 
     #     0 is black, 1 is no adjustment, >1 is brighter
     # mask_contrast_adjust (non-negative float): amount to adjust contrast of the image, 
     #     0 is a flat grey image, 1 is no adjustment, >1 is more contrast
-    
     mask = load_mask_latent(mask_input, mask_shape)
 
     # Mask brightness/contrast adjustments
+    if invert_mask:
+        mask = PIL.ImageOps.invert(mask)
     if mask_brightness_adjust != 1:
         mask = TF.adjust_brightness(mask, mask_brightness_adjust)
     if mask_contrast_adjust != 1:
         mask = TF.adjust_contrast(mask, mask_contrast_adjust)
-
-    if invert_mask:
-        mask = PIL.ImageOps.invert(mask)
-    
     return mask
     
 def generate(args, root, frame = 0, return_sample=False):
@@ -134,7 +128,6 @@ def generate(args, root, frame = 0, return_sample=False):
     else:
         p.denoising_strength = 1 - args.strength
     p.cfg_scale = args.scale
-    # FIXME better color corrections as match histograms doesn't seem to be fully working
     if root.color_corrections is not None:
         p.color_corrections = root.color_corrections
 
@@ -171,7 +164,6 @@ def generate(args, root, frame = 0, return_sample=False):
                                           shape=(args.W, args.H),  
                                           use_alpha_as_mask=args.use_alpha_as_mask)
     else:
-        # sometimes my genius... is almost frightening
         p_txt = StableDiffusionProcessingTxt2Img(
                 sd_model=sd_model,
                 outpath_samples=p.outpath_samples,
@@ -195,12 +187,9 @@ def generate(args, root, frame = 0, return_sample=False):
                 restore_faces=p.restore_faces,
                 tiling=p.tiling,
                 enable_hr=None,
-                denoising_strength=None,#for initial image
+                denoising_strength=None,
             )
         processed = processing.process_images(p_txt)
-        #if args.use_mask:
-        #    init_image = processed.images[0]
-        #    processed = None
     
     if processed is None:
         # Mask functions
@@ -216,11 +205,6 @@ def generate(args, root, frame = 0, return_sample=False):
             p.inpainting_fill = args.fill 
             p.inpaint_full_res= args.full_res_mask 
             p.inpaint_full_res_padding = args.full_res_mask_padding 
-
-            #if (torch.all(mask == 0) or torch.all(mask == 1)) and args.use_alpha_as_mask:
-            #    raise Warning("use_alpha_as_mask==True: Using the alpha channel from the init image as a mask, but the alpha channel is blank.")
-            
-            #mask = repeat(mask, '1 ... -> b ...', b=batch_size)
         else:
             mask = None
 
@@ -241,6 +225,8 @@ def generate(args, root, frame = 0, return_sample=False):
         
     if root.first_frame == None:
             root.first_frame = processed.images[0]
+            if opts.img2img_color_correction: #thx rewbs
+                root.color_corrections = [processing.setup_color_correction(root.first_frame)] 
 
     if return_sample:
         pil_image = processed.images[0].convert('RGB') 
@@ -252,8 +238,14 @@ def generate(args, root, frame = 0, return_sample=False):
     else:
         results = [processed.images[0]]
     
-    # added option to mask frame noising
+    
+    # get first frame mask for noise masking
+    if frame == 0 and args.mask_frame_noise : 
+        noise_mask_image = prepare_mask(args.mask_file if mask_image is None else mask_image, 
+                                (args.W, args.H), 1, 1, args.invert_mask)
+    # mask frame noising when using a mask
     if noise_mask_image is not None:
         results.append(noise_mask_image)
+    
     
     return results
