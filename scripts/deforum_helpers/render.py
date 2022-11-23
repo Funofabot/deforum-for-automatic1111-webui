@@ -133,6 +133,7 @@ def render_animation(args, anim_args, animation_prompts, root):
     state.job_count = anim_args.max_frames
     
     while frame_idx < anim_args.max_frames:
+
         print(f"Rendering animation frame {frame_idx} of {anim_args.max_frames}")
         state.job = f"frame {frame_idx + 1}/{anim_args.max_frames}"
         state.job_no = frame_idx + 1
@@ -220,7 +221,7 @@ def render_animation(args, anim_args, animation_prompts, root):
         
         if args.seed_behavior == 'schedule':
             args.seed = int(keys.seed_schedule_series[frame_idx])
-        
+
         print(f"{args.prompt} {args.seed}")
         if not using_vid_init:
             print(f"Angle: {keys.angle_series[frame_idx]} Zoom: {keys.zoom_series[frame_idx]}")
@@ -246,7 +247,7 @@ def render_animation(args, anim_args, animation_prompts, root):
          # normal
         else :
             sample, image = generate(args, root, frame_idx, return_sample=True)
-            
+        
         if not using_vid_init:
             prev_sample = sample
 
@@ -264,7 +265,6 @@ def render_animation(args, anim_args, animation_prompts, root):
             frame_idx += 1
 
         state.current_image = image
-
         args.seed = next_seed(args)
 
 def current_frame_path(args, frame_idx, name) :
@@ -326,5 +326,3 @@ def render_animation_with_video_mask(args, anim_args, animation_prompts, root):
     #args.use_init = True
     print(f"Loading {anim_args.max_frames} input frames from {mask_in_frame_path} and saving video frames to {args.outdir}")
     render_animation(args, anim_args, animation_prompts, root)
-
-        
