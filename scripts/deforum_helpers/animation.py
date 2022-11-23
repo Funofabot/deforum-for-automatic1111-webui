@@ -9,6 +9,7 @@ import re
 import pathlib
 import os
 import pandas as pd
+import shutil as shutil
 
 def check_is_number(value):
     float_pattern = r'^(?=.)([+-]?([0-9]*)(\.([0-9]+))?)$'
@@ -32,17 +33,34 @@ def construct_RotationMatrixHomogenous(rotation_angles):
     cv2.Rodrigues(np.array(rotation_angles), RH[0:3, 0:3])
     return RH
 
-def vid2frames(video_path, video_in_frame_path, n=1, overwrite=True):      
-    input_content = os.listdir(video_in_frame_path)
-    if len(input_content) == 0 or overwrite:
-        try:
-            for f in pathlib.Path(video_path).glob('*.jpg'):
-                f.unlink()
-        except:
-            pass
-        assert os.path.exists(video_path), f"Video input {video_path} does not exist"
-          
-        vidcap = cv2.VideoCapture(video_path)
+
+
+def vid2frames(video_path, video_in_frame_path, n=1, overwrite=True): 
+    if n < 1: n = 1 #HACK Gradio interface does not currently allow min/max in gr.Number(...) 
+    if os.path.exists(video_path) != True :
+        raise RuntimeError('Video path does not exist')
+
+    input_content = []
+    if os.path.exists(video_in_frame_path) :
+        input_content = os.listdir(video_in_frame_path)
+    else :
+        os.makedirs(video_in_frame_path, exist_ok=True)
+
+    vidcap = cv2.VideoCapture(video_path)
+    frame_count = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT)) # grab the frame count to check against existing directory len
+    
+    if n >= frame_count : 
+        raise RuntimeError('Skipping more frames than input video contains. extract_nth_frames larger than input frames')
+    
+    expected_frame_count = math.ceil(frame_count / n) 
+
+    # Check to see if the frame count is matches the number of files in path
+    if overwrite or expected_frame_count != len(input_content):
+        shutil.rmtree(video_in_frame_path)
+        os.makedirs(video_in_frame_path, exist_ok=True) # just deleted the folder so we need to make it again
+        input_content = os.listdir(video_in_frame_path)
+    
+    if len(input_content) == 0:
         success,image = vidcap.read()
         count = 0
         t=1
