@@ -38,10 +38,12 @@ def render_animation(args, anim_args, animation_prompts, root):
     # resume animation
     start_frame = 0
     if anim_args.resume_from_timestring:
+        
         for tmp in os.listdir(args.outdir):
-            if tmp.split("_")[0] == anim_args.resume_timestring:
+            if ".txt" in tmp :
+                pass
+            elif tmp.split("_")[0] == anim_args.resume_timestring:
                 start_frame += 1
-        start_frame = start_frame - 1
 
     # create output folder for the batch
     os.makedirs(args.outdir, exist_ok=True)
@@ -88,6 +90,7 @@ def render_animation(args, anim_args, animation_prompts, root):
     
     if anim_args.resume_from_timestring:
         last_frame = start_frame-1
+        print (last_frame)
         if turbo_steps > 1:
             last_frame -= last_frame%turbo_steps
         path = os.path.join(args.outdir,f"{args.timestring}_{last_frame:05}.png")
