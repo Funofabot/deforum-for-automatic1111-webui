@@ -82,29 +82,6 @@ def render_animation(args, anim_args, animation_prompts, root):
     turbo_prev_image, turbo_prev_frame_idx = None, 0
     turbo_next_image, turbo_next_frame_idx = None, 0
     
-    # frame noising mask 
-    #TODO: move this after resume animation and load video mask at current resume frame
-    frame_noise_mask = None
-    if args.mask_frame_noise :
-        #HACK adding frame 0 noise masking by loading the mask here only when frame is 0
-        #video mask
-        if anim_args.use_mask_video:
-            mask_frame = os.path.join(args.outdir, 'maskframes', f"{1:05}.jpg")
-            args.mask_file = mask_frame
-            frame_noise_mask = prepare_mask(args.mask_file, 
-                                (args.W, args.H), 
-                                args.mask_contrast_adjust, 
-                                args.mask_brightness_adjust, 
-                                args.invert_mask)
-        
-        #static mask, since use_mask is set to true using video as mask, check that we are not using video mask and use static mask 
-        if not anim_args.use_mask_video and args.use_mask:
-            frame_noise_mask = prepare_mask(args.mask_file, 
-                                (args.W, args.H), 
-                                args.mask_contrast_adjust, 
-                                args.mask_brightness_adjust, 
-                                args.invert_mask)
-
     # resume animation
     prev_sample = None
     color_match_sample = None
@@ -125,7 +102,33 @@ def render_animation(args, anim_args, animation_prompts, root):
 
     args.n_samples = 1
     frame_idx = start_frame
-    
+    print (frame_idx, "frame_idx")
+    # frame noising mask 
+    frame_noise_mask = None
+    if args.mask_frame_noise :
+        #HACK adding frame 0 noise masking by loading the mask here only when frame is 0
+        #or when resuming animation and using video mask
+        #video mask
+        if anim_args.use_mask_video:
+            print("first frame mask")
+            mask_frame_index = frame_idx
+            if mask_frame_index < 1 : mask_frame_index = 1
+            mask_frame = args.mask_file = current_frame_path(args, mask_frame_index, 'maskframes')
+            args.mask_file = mask_frame
+            frame_noise_mask = prepare_mask(args.mask_file, 
+                                (args.W, args.H), 
+                                args.mask_contrast_adjust, 
+                                args.mask_brightness_adjust, 
+                                args.invert_mask)
+        
+        #static mask, since use_mask is set to true using video as mask, check that we are not using video mask and use static mask 
+        if not anim_args.use_mask_video and args.use_mask:
+            frame_noise_mask = prepare_mask(args.mask_file, 
+                                (args.W, args.H), 
+                                args.mask_contrast_adjust, 
+                                args.mask_brightness_adjust, 
+                                args.invert_mask)
+
     #Webui
     state.job_count = anim_args.max_frames
     
@@ -224,21 +227,23 @@ def render_animation(args, anim_args, animation_prompts, root):
             print(f"Tx: {keys.translation_x_series[frame_idx]} Ty: {keys.translation_y_series[frame_idx]} Tz: {keys.translation_z_series[frame_idx]}")
             print(f"Rx: {keys.rotation_3d_x_series[frame_idx]} Ry: {keys.rotation_3d_y_series[frame_idx]} Rz: {keys.rotation_3d_z_series[frame_idx]}")
             if anim_args.use_mask_video:
-                mask_frame = os.path.join(args.outdir, 'maskframes', f"{frame_idx+1:05}.jpg")
-                args.mask_file = mask_frame
+                args.mask_file = current_frame_path(args, frame_idx, 'maskframes')
 
         # grab init image for current frame
         if using_vid_init:
-            init_frame = os.path.join(args.outdir, 'inputframes', f"{frame_idx+1:05}.jpg")            
+            init_frame = current_frame_path(args, frame_idx, 'inputframes')
             print(f"Using video init frame {init_frame}")
             args.init_image = init_frame
             if anim_args.use_mask_video:
-                mask_frame = os.path.join(args.outdir, 'maskframes', f"{frame_idx+1:05}.jpg")
-                args.mask_file = mask_frame
+                args.mask_file = current_frame_path(args, frame_idx, 'maskframes')
 
         # sample the diffusion model
-        if args.mask_frame_noise and frame_idx > 0 and (args.use_mask or anim_args.use_mask_video): #noise mask is not supplied by generate(...) on frame 0
+        #noise mask is not supplied by generate(...) on frame 0
+        if args.mask_frame_noise and frame_idx != 0 and (args.use_mask or anim_args.use_mask_video) and not args.use_init : 
             sample, image, frame_noise_mask = generate(args, root, frame_idx, return_sample=True)
+        elif args.mask_frame_noise and args.use_init and (args.use_mask or anim_args.use_mask_video) :
+            sample, image, frame_noise_mask = generate(args, root, frame_idx, return_sample=True)
+         # normal
         else :
             sample, image = generate(args, root, frame_idx, return_sample=True)
             
@@ -262,9 +267,15 @@ def render_animation(args, anim_args, animation_prompts, root):
 
         args.seed = next_seed(args)
 
+def current_frame_path(args, frame_idx, name) :
+    batch_path = os.path.dirname(os.path.normpath(args.outdir))
+    frame_path = os.path.join(batch_path, name, f"{frame_idx+1:05}.jpg")
+    return frame_path
+
 def render_input_video(args, anim_args, animation_prompts, root):
     # create a folder for the video input frames to live in
-    video_in_frame_path = os.path.join(args.outdir, 'inputframes') 
+    batch_path = os.path.dirname(os.path.normpath(args.outdir))
+    video_in_frame_path = os.path.join(batch_path, 'inputframes') 
     os.makedirs(video_in_frame_path, exist_ok=True)
     
     # save the video frames from input video
@@ -278,22 +289,31 @@ def render_input_video(args, anim_args, animation_prompts, root):
 
     if anim_args.use_mask_video:
         # create a folder for the mask video input frames to live in
-        mask_in_frame_path = os.path.join(args.outdir, 'maskframes') 
+        batch_path = os.path.dirname(os.path.normpath(args.outdir))
+        mask_in_frame_path = os.path.join(batch_path, 'maskframes') 
+       
         os.makedirs(mask_in_frame_path, exist_ok=True)
 
         # save the video frames from mask video
         print(f"Exporting Video Frames (1 every {anim_args.extract_nth_frame}) frames to {mask_in_frame_path}...")
         vid2frames(anim_args.video_mask_path, mask_in_frame_path, anim_args.extract_nth_frame, anim_args.overwrite_extracted_frames)
+        max_mask_frames = len([f for f in pathlib.Path(mask_in_frame_path).glob('*.jpg')])
+
+        # limit max frames if there are less frames in the video mask compared to input video
+        if max_mask_frames < anim_args.max_frames :
+            anim_args.max_mask_frames
+            print ("Video mask contains less frames than init video, max frames limited to number of mask frames.")
+
         args.use_mask = True
-        args.overlay_mask = True
+        #args.overlay_mask = True #removed because option is available to set in UI already
 
     render_animation(args, anim_args, animation_prompts, root)
 
 # Modified a copy of the above to allow using masking video with out a init video.
 def render_animation_with_video_mask(args, anim_args, animation_prompts, root):
-    # create a folder for the video input frames to live in
-    mask_in_frame_path = os.path.join(args.outdir, 'maskframes') 
-    os.makedirs(mask_in_frame_path, exist_ok=True)
+    # create a path to the folder for the input frames to be stored in
+    batch_path = os.path.dirname(os.path.normpath(args.outdir))
+    mask_in_frame_path = os.path.join(batch_path, 'maskframes') 
 
     # save the video frames from mask video
     print(f"Exporting Video Frames (1 every {anim_args.extract_nth_frame}) frames to {mask_in_frame_path}...")
@@ -305,5 +325,6 @@ def render_animation_with_video_mask(args, anim_args, animation_prompts, root):
     anim_args.max_frames = len([f for f in pathlib.Path(mask_in_frame_path).glob('*.jpg')])
     #args.use_init = True
     print(f"Loading {anim_args.max_frames} input frames from {mask_in_frame_path} and saving video frames to {args.outdir}")
-
     render_animation(args, anim_args, animation_prompts, root)
+
+        
