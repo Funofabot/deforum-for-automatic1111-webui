@@ -74,6 +74,8 @@ def load_mask_latent(mask_input, shape):
 
     mask = mask_image.resize(shape, resample=Image.LANCZOS)
     mask = mask.convert("L")
+    #HACK for all black mask and fullres inpaint causing error on cropping
+    mask.putpixel([mask.width-1,mask.height-1], 1)
     return mask
 
 def prepare_mask(mask_input, mask_shape, mask_brightness_adjust=1.0, mask_contrast_adjust=1.0, invert_mask=False):
