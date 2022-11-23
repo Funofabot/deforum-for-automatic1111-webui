@@ -569,8 +569,14 @@ def process_args(self, p, override_settings_with_file, custom_settings_file, ani
     # use timestring as a new folder to help organize
     # if resume from timestring use the resume timestring instead of current time string
     if anim_args.resume_from_timestring :
-        args.timestring = anim_args.resume_timestring
-        args.outdir = os.path.join(args.outdir, anim_args.resume_timestring)
+        resume_folder = os.path.join(args.outdir, anim_args.resume_timestring)
+        if len(os.listdir(resume_folder)) > 4 :
+            args.outdir = resume_folder
+            args.timestring = anim_args.resume_timestring
+        else :
+            args.resume_from_timestring = False
+            args.outdir = os.path.join(args.outdir, args.timestring)
+            print("No frames in directory to resume from")
     else :
         args.outdir = os.path.join(args.outdir, args.timestring)
 
