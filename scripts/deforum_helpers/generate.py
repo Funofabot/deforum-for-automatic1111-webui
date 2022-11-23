@@ -197,6 +197,9 @@ def generate(args, root, frame = 0, return_sample=False):
                 denoising_strength=None,#for initial image
             )
         processed = processing.process_images(p_txt)
+        #if args.use_mask:
+        #    init_image = processed.images[0]
+        #    processed = None
     
     if processed is None:
         # Mask functions
@@ -250,7 +253,7 @@ def generate(args, root, frame = 0, return_sample=False):
         results = [processed.images[0]]
     
     # added option to mask frame noising
-    if noise_mask_image is not None :
+    if noise_mask_image is not None:
         results.append(noise_mask_image)
     
     return results
