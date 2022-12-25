@@ -15,8 +15,8 @@ for basedir in basedirs:
 
 # Main deforum stuff
 
-import deforum_helpers.args as deforum_args
-import deforum_helpers.settings as deforum_settings
+import scripts.deforum_helpers.args as deforum_args
+import scripts.deforum_helpers.settings as deforum_settings
 
 import modules.scripts as wscripts
 from modules import script_callbacks
